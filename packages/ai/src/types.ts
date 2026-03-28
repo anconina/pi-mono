@@ -177,6 +177,16 @@ export interface Usage {
 		cacheWrite: number;
 		total: number;
 	};
+	/** Granular cache write breakdown by TTL (Anthropic only).
+	 *  Present when the API returns the `cache_creation` object with
+	 *  per-TTL token counts. Undefined for non-Anthropic providers or
+	 *  when no cache writes occurred. */
+	cacheCreation?: {
+		/** Tokens written to the 5-minute ephemeral cache. */
+		ephemeral5mTokens: number;
+		/** Tokens written to the 1-hour ephemeral cache. */
+		ephemeral1hTokens: number;
+	};
 }
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";

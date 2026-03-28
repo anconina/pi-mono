@@ -271,6 +271,16 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 					output.usage.output = event.message.usage.output_tokens || 0;
 					output.usage.cacheRead = event.message.usage.cache_read_input_tokens || 0;
 					output.usage.cacheWrite = event.message.usage.cache_creation_input_tokens || 0;
+					// Extract granular cache write breakdown by TTL when present
+					const cacheCreation = (event.message.usage as unknown as Record<string, unknown>).cache_creation as
+						| { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
+						| undefined;
+					if (cacheCreation) {
+						output.usage.cacheCreation = {
+							ephemeral5mTokens: cacheCreation.ephemeral_5m_input_tokens || 0,
+							ephemeral1hTokens: cacheCreation.ephemeral_1h_input_tokens || 0,
+						};
+					}
 					// Anthropic doesn't provide total_tokens, compute from components
 					output.usage.totalTokens =
 						output.usage.input + output.usage.output + output.usage.cacheRead + output.usage.cacheWrite;
@@ -410,6 +420,16 @@ export const streamAnthropic: StreamFunction<"anthropic-messages", AnthropicOpti
 					}
 					if (event.usage.cache_creation_input_tokens != null) {
 						output.usage.cacheWrite = event.usage.cache_creation_input_tokens;
+					}
+					// Extract granular cache write breakdown by TTL when present
+					const deltaCreation = (event.usage as unknown as Record<string, unknown>).cache_creation as
+						| { ephemeral_5m_input_tokens?: number; ephemeral_1h_input_tokens?: number }
+						| undefined;
+					if (deltaCreation) {
+						output.usage.cacheCreation = {
+							ephemeral5mTokens: deltaCreation.ephemeral_5m_input_tokens || 0,
+							ephemeral1hTokens: deltaCreation.ephemeral_1h_input_tokens || 0,
+						};
 					}
 					// Anthropic doesn't provide total_tokens, compute from components
 					output.usage.totalTokens =
