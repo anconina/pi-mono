@@ -479,6 +479,70 @@ describe("Coding Agent Tools", () => {
 			// Ensure second match is not present
 			expect(output).not.toContain("match two");
 		});
+
+		it("should support multiline matching", async () => {
+			const testFile = join(testDir, "multi.txt");
+			writeFileSync(testFile, "no match here\nfunction foo() {\n  return 1;\n}\nlast line");
+			// Without multiline, a cross-line pattern should find no matches
+			const noMatch = await grepTool.execute("test-multiline-off", {
+				pattern: "foo.*return",
+				path: testFile,
+			});
+			expect(getTextOutput(noMatch)).toBe("No matches found");
+			// With multiline, the same cross-line pattern should find a match
+			const result = await grepTool.execute("test-multiline-on", {
+				pattern: "foo.*return",
+				path: testFile,
+				multiline: true,
+			});
+			const output = getTextOutput(result);
+			expect(output).toContain("foo");
+			expect(output).not.toBe("No matches found");
+		});
+
+		it("should escape patterns starting with dash", async () => {
+			const testFile = join(testDir, "dash.txt");
+			writeFileSync(testFile, "line one\n-TODO fix this\nline three");
+			const result = await grepTool.execute("test-dash", {
+				pattern: "-TODO",
+				path: testFile,
+				literal: true,
+			});
+			const output = getTextOutput(result);
+			expect(output).toContain("-TODO fix this");
+		});
+
+		it("should support separate contextBefore and contextAfter", async () => {
+			const testFile = join(testDir, "asymctx.txt");
+			writeFileSync(testFile, "a\nb\nc\nmatch\nd\ne\nf");
+			const result = await grepTool.execute("test-ctx-asym", {
+				pattern: "match",
+				path: testFile,
+				contextBefore: 1,
+				contextAfter: 2,
+			});
+			const output = getTextOutput(result);
+			expect(output).toContain("asymctx.txt-3- c");
+			expect(output).toContain("asymctx.txt:4: match");
+			expect(output).toContain("asymctx.txt-5- d");
+			expect(output).toContain("asymctx.txt-6- e");
+			expect(output).not.toContain("asymctx.txt-2-");
+			expect(output).not.toContain("asymctx.txt-7-");
+		});
+
+		it("should support --type file type filter", async () => {
+			mkdirSync(join(testDir, "typed"), { recursive: true });
+			writeFileSync(join(testDir, "typed", "code.ts"), "const x = 1;");
+			writeFileSync(join(testDir, "typed", "data.json"), '{"x": 1}');
+			const result = await grepTool.execute("test-type", {
+				pattern: "x",
+				path: join(testDir, "typed"),
+				type: "ts",
+			});
+			const output = getTextOutput(result);
+			expect(output).toContain("code.ts");
+			expect(output).not.toContain("data.json");
+		});
 	});
 
 	describe("find tool", () => {

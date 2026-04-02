@@ -24,6 +24,12 @@ const grepSchema = Type.Object({
 	pattern: Type.String({ description: "Search pattern (regex or literal string)" }),
 	path: Type.Optional(Type.String({ description: "Directory or file to search (default: current directory)" })),
 	glob: Type.Optional(Type.String({ description: "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'" })),
+	type: Type.Optional(
+		Type.String({
+			description:
+				"File type to search (rg --type), e.g. 'js', 'py', 'rust', 'go', 'java'. More efficient than glob for standard file types.",
+		}),
+	),
 	ignoreCase: Type.Optional(Type.Boolean({ description: "Case-insensitive search (default: false)" })),
 	literal: Type.Optional(
 		Type.Boolean({ description: "Treat pattern as literal string instead of regex (default: false)" }),
@@ -31,7 +37,23 @@ const grepSchema = Type.Object({
 	context: Type.Optional(
 		Type.Number({ description: "Number of lines to show before and after each match (default: 0)" }),
 	),
+	contextBefore: Type.Optional(
+		Type.Number({
+			description:
+				"Number of lines to show before each match (default: 0). Overrides context for before-match lines.",
+		}),
+	),
+	contextAfter: Type.Optional(
+		Type.Number({
+			description: "Number of lines to show after each match (default: 0). Overrides context for after-match lines.",
+		}),
+	),
 	limit: Type.Optional(Type.Number({ description: "Maximum number of matches to return (default: 100)" })),
+	multiline: Type.Optional(
+		Type.Boolean({
+			description: "Enable multiline mode where . matches newlines and patterns can span lines (default: false)",
+		}),
+	),
 });
 
 export type GrepToolInput = Static<typeof grepSchema>;
@@ -136,18 +158,26 @@ export function createGrepToolDefinition(
 				pattern,
 				path: searchDir,
 				glob,
+				type,
 				ignoreCase,
 				literal,
 				context,
+				contextBefore,
+				contextAfter,
 				limit,
+				multiline,
 			}: {
 				pattern: string;
 				path?: string;
 				glob?: string;
+				type?: string;
 				ignoreCase?: boolean;
 				literal?: boolean;
 				context?: number;
+				contextBefore?: number;
+				contextAfter?: number;
 				limit?: number;
+				multiline?: boolean;
 			},
 			signal?: AbortSignal,
 			_onUpdate?,
@@ -184,7 +214,8 @@ export function createGrepToolDefinition(
 							return;
 						}
 
-						const contextValue = context && context > 0 ? context : 0;
+						const ctxBefore = contextBefore ?? (context && context > 0 ? context : 0);
+						const ctxAfter = contextAfter ?? (context && context > 0 ? context : 0);
 						const effectiveLimit = Math.max(1, limit ?? DEFAULT_LIMIT);
 						const formatPath = (filePath: string): string => {
 							if (isDirectory) {
@@ -214,8 +245,14 @@ export function createGrepToolDefinition(
 						const args: string[] = ["--json", "--line-number", "--color=never", "--hidden"];
 						if (ignoreCase) args.push("--ignore-case");
 						if (literal) args.push("--fixed-strings");
+						if (multiline) args.push("-U", "--multiline-dotall");
 						if (glob) args.push("--glob", glob);
-						args.push(pattern, searchPath);
+						if (type) args.push("--type", type);
+						if (pattern.startsWith("-")) {
+							args.push("-e", pattern, searchPath);
+						} else {
+							args.push(pattern, searchPath);
+						}
 
 						const child = spawn(rgPath, args, { stdio: ["ignore", "pipe", "pipe"] });
 						const rl = createInterface({ input: child.stdout });
@@ -251,8 +288,8 @@ export function createGrepToolDefinition(
 							const lines = await getFileLines(filePath);
 							if (!lines.length) return [`${relativePath}:${lineNumber}: (unable to read file)`];
 							const block: string[] = [];
-							const start = contextValue > 0 ? Math.max(1, lineNumber - contextValue) : lineNumber;
-							const end = contextValue > 0 ? Math.min(lines.length, lineNumber + contextValue) : lineNumber;
+							const start = ctxBefore > 0 ? Math.max(1, lineNumber - ctxBefore) : lineNumber;
+							const end = ctxAfter > 0 ? Math.min(lines.length, lineNumber + ctxAfter) : lineNumber;
 							for (let current = start; current <= end; current++) {
 								const lineText = lines[current - 1] ?? "";
 								const sanitized = lineText.replace(/\r/g, "");
